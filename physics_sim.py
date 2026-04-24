@@ -86,9 +86,18 @@ def constant_force_value(expression: str) -> float | None:
         return None
 
 
-def equilibrium_angle_for_constant_force(params: SimulationParams) -> float | None:
+def reference_angle_for_constant_acceleration(params: SimulationParams) -> float | None:
     force_value = constant_force_value(params.force_expression)
     if force_value is None:
+        return None
+
+    torque_value = constant_force_value(params.torque_expression)
+    if torque_value is None or abs(torque_value) > 1e-12:
+        return None
+
+    # With cart damping, a constant force drives the cart toward a terminal
+    # velocity, so a non-zero tilted angle is not a persistent steady state.
+    if abs(params.cart_damping) > 1e-12:
         return None
 
     denominator = (params.cart_mass + params.pendulum_mass) * params.gravity

@@ -6,7 +6,12 @@ import numpy as np
 import streamlit as st
 from matplotlib.patches import FancyBboxPatch
 
-from physics_sim import SimulationParams, equilibrium_angle_for_constant_force, simulate_system
+from physics_sim import (
+    SimulationParams,
+    constant_force_value,
+    reference_angle_for_constant_acceleration,
+    simulate_system,
+)
 
 st.set_page_config(
     page_title="Simulatore Carrello-Pendolo",
@@ -66,7 +71,7 @@ SCENARIO_PRESETS = {
         "time_step": 0.01,
     },
     "Accelerazione costante": {
-        "description": "Una forza costante inclina il pendolo verso un nuovo equilibrio statico e trascina il carrello.",
+        "description": "Una forza costante accelera il sistema nel transitorio; con smorzamento il carrello tende poi a una velocita quasi costante e il pendolo si raddrizza.",
         "cart_mass": 1.8,
         "cart_damping": 0.20,
         "pendulum_damping": 0.05,
@@ -273,30 +278,52 @@ def _style_axes(axes) -> None:
         ax.grid(True, alpha=0.22)
 
 
-def _build_overview_figure(result, equilibrium_angle_deg: float | None = None) -> plt.Figure:
+def _build_overview_figure(result, reference_angle_deg: float | None = None) -> plt.Figure:
     fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.3), dpi=140)
     fig.patch.set_facecolor("#ffffff")
     time = result.time
 
-    axes[0].plot(time, result.cart_position, color="#0f766e", linewidth=2.3)
-    axes[0].plot(time, result.cart_velocity, color="#0ea5e9", linewidth=1.8)
+    cart_velocity_axis = axes[0].twinx()
+    cart_position_line = axes[0].plot(time, result.cart_position, color="#0f766e", linewidth=2.3, label="x [m]")[0]
+    cart_velocity_line = cart_velocity_axis.plot(
+        time,
+        result.cart_velocity,
+        color="#0ea5e9",
+        linewidth=1.8,
+        label="v [m/s]",
+    )[0]
     axes[0].set_title("Carrello", color="#0f172a", fontweight="bold")
     axes[0].set_xlabel("Tempo [s]")
-    axes[0].set_ylabel("Stato")
-    axes[0].legend(["x [m]", "v [m/s]"], frameon=False)
+    axes[0].set_ylabel("x [m]", color="#0f766e")
+    cart_velocity_axis.set_ylabel("v [m/s]", color="#0ea5e9")
+    axes[0].tick_params(axis="y", colors="#0f766e")
+    cart_velocity_axis.tick_params(axis="y", colors="#0ea5e9")
+    axes[0].legend([cart_position_line, cart_velocity_line], ["x [m]", "v [m/s]"], frameon=False, loc="upper right")
 
-    axes[1].plot(time, result.theta_deg, color="#0f766e", linewidth=2.4)
-    axes[1].plot(time, result.omega_deg, color="#7c3aed", linewidth=1.9)
-    axes[1].axhline(0.0, color="#94a3b8", linewidth=1.0, alpha=0.75)
-    if equilibrium_angle_deg is not None:
-        axes[1].axhline(equilibrium_angle_deg, color="#ef4444", linewidth=1.6, linestyle="--", alpha=0.9)
+    omega_axis = axes[1].twinx()
+    theta_line = axes[1].plot(time, result.theta_deg, color="#0f766e", linewidth=2.4, label="theta [deg]")[0]
+    omega_line = omega_axis.plot(time, result.omega_deg, color="#7c3aed", linewidth=1.9, label="omega [deg/s]")[0]
+    reference_line = axes[1].axhline(0.0, color="#94a3b8", linewidth=1.0, alpha=0.75, label="theta = 0")
+    legend_lines = [theta_line, omega_line, reference_line]
+    legend_labels = ["theta [deg]", "omega [deg/s]", "theta = 0"]
+    if reference_angle_deg is not None:
+        accel_line = axes[1].axhline(
+            reference_angle_deg,
+            color="#ef4444",
+            linewidth=1.6,
+            linestyle="--",
+            alpha=0.9,
+            label="rif. accel. [deg]",
+        )
+        legend_lines.append(accel_line)
+        legend_labels.append("rif. accel. [deg]")
     axes[1].set_title("Pendolo", color="#0f172a", fontweight="bold")
     axes[1].set_xlabel("Tempo [s]")
-    axes[1].set_ylabel("Angolo / velocita")
-    pendulum_labels = ["theta [deg]", "omega [deg/s]"]
-    if equilibrium_angle_deg is not None:
-        pendulum_labels.append("theta_eq [deg]")
-    axes[1].legend(pendulum_labels, frameon=False)
+    axes[1].set_ylabel("theta [deg]", color="#0f766e")
+    omega_axis.set_ylabel("omega [deg/s]", color="#7c3aed")
+    axes[1].tick_params(axis="y", colors="#0f766e")
+    omega_axis.tick_params(axis="y", colors="#7c3aed")
+    axes[1].legend(legend_lines, legend_labels, frameon=False, loc="upper right")
 
     axes[2].plot(time, result.force, color="#d97706", linewidth=2.2)
     axes[2].axhline(0.0, color="#94a3b8", linewidth=1.0, alpha=0.75)
@@ -305,6 +332,12 @@ def _build_overview_figure(result, equilibrium_angle_deg: float | None = None) -
     axes[2].set_ylabel("F [N]")
 
     _style_axes(axes)
+    for secondary_axis in (cart_velocity_axis, omega_axis):
+        secondary_axis.set_facecolor("none")
+        secondary_axis.spines["top"].set_visible(False)
+        secondary_axis.spines["left"].set_visible(False)
+        secondary_axis.spines["right"].set_color("#cbd5e1")
+        secondary_axis.grid(False)
     fig.tight_layout()
     return fig
 
@@ -334,7 +367,7 @@ def _build_energy_figure(result) -> plt.Figure:
     return fig
 
 
-def _build_phase_figure(result, equilibrium_angle_deg: float | None = None) -> plt.Figure:
+def _build_phase_figure(result, reference_angle_deg: float | None = None) -> plt.Figure:
     fig, axes = plt.subplots(1, 2, figsize=(13.5, 4.4), dpi=140)
     fig.patch.set_facecolor("#ffffff")
 
@@ -348,8 +381,8 @@ def _build_phase_figure(result, equilibrium_angle_deg: float | None = None) -> p
     axes[1].plot(result.theta_deg, result.omega_deg, color="#7c3aed", linewidth=2.0)
     axes[1].scatter(result.theta_deg[0], result.omega_deg[0], color="#2563eb", s=55, zorder=5)
     axes[1].scatter(result.theta_deg[-1], result.omega_deg[-1], color="#f97316", s=55, zorder=5)
-    if equilibrium_angle_deg is not None:
-        axes[1].axvline(equilibrium_angle_deg, color="#ef4444", linewidth=1.6, linestyle="--", alpha=0.9)
+    if reference_angle_deg is not None:
+        axes[1].axvline(reference_angle_deg, color="#ef4444", linewidth=1.6, linestyle="--", alpha=0.9)
     axes[1].set_title("Ritratto di fase del pendolo", color="#0f172a", fontweight="bold")
     axes[1].set_xlabel("theta [deg]")
     axes[1].set_ylabel("omega [deg/s]")
@@ -456,7 +489,7 @@ def _build_scene_figure(
     index: int,
     cart_width: float,
     cart_height: float,
-    equilibrium_angle_rad: float | None = None,
+    reference_angle_rad: float | None = None,
 ) -> plt.Figure:
     x = result.cart_position[index]
     theta = result.theta[index]
@@ -481,10 +514,10 @@ def _build_scene_figure(
 
     wrapped_positions = _wrapped_system_positions(float(x), xlim)
     for draw_x in wrapped_positions:
-        if equilibrium_angle_rad is not None:
+        if reference_angle_rad is not None:
             pivot_y = geometry["pivot_y"]
-            ref_bob_x = draw_x + DISPLAY_PENDULUM_LENGTH * np.sin(equilibrium_angle_rad)
-            ref_bob_y = pivot_y - DISPLAY_PENDULUM_LENGTH * np.cos(equilibrium_angle_rad)
+            ref_bob_x = draw_x + DISPLAY_PENDULUM_LENGTH * np.sin(reference_angle_rad)
+            ref_bob_y = pivot_y - DISPLAY_PENDULUM_LENGTH * np.cos(reference_angle_rad)
             ax.plot([draw_x, ref_bob_x], [pivot_y, ref_bob_y], color="#ef4444", linewidth=2.0, linestyle="--", alpha=0.45, zorder=3)
             ax.scatter([ref_bob_x], [ref_bob_y], s=120, color="#fecaca", edgecolors="#ef4444", linewidths=1.2, alpha=0.45, zorder=3)
         _draw_system(ax, draw_x, float(theta), float(force), DISPLAY_PENDULUM_LENGTH, cart_width, cart_height)
@@ -526,11 +559,11 @@ def _build_scene_figure(
         fontsize=10.5,
         color="#334155",
     )
-    if equilibrium_angle_rad is not None:
+    if reference_angle_rad is not None:
         ax.text(
             0.02,
             0.84,
-            f"theta_eq = {np.rad2deg(equilibrium_angle_rad):.2f} deg",
+            f"theta_ref = {np.rad2deg(reference_angle_rad):.2f} deg",
             transform=ax.transAxes,
             ha="left",
             va="top",
@@ -902,11 +935,22 @@ def _simulation_insights(result, params: SimulationParams) -> list[tuple[str, st
     else:
         regime_text = "La simulazione entra in un regime ampio e decisamente non lineare, utile per osservare effetti fuori dal piccolo angolo."
 
-    eq_angle = equilibrium_angle_for_constant_force(params)
-    if eq_angle is None:
+    reference_force = constant_force_value(params.force_expression)
+    ref_angle = reference_angle_for_constant_acceleration(params)
+    if reference_force is None:
         forcing_text = "La forza cambia nel tempo: non esiste un unico equilibrio statico e contano molto frequenza, fase e smorzamento."
+    elif abs(params.cart_damping) > 1e-12:
+        forcing_text = (
+            "Con smorzamento sul carrello, una forza costante non impone un angolo finale inclinato: "
+            "dopo il transitorio il carrello tende a una velocita di regime e il pendolo verso theta = 0 deg."
+        )
+    elif ref_angle is None:
+        forcing_text = "La forza e costante, ma la presenza di una coppia esterna rende meno utile un riferimento semplice sull'angolo."
     else:
-        forcing_text = f"Con la forza costante scelta, l'angolo di equilibrio teorico vale circa {np.rad2deg(eq_angle):.2f} deg."
+        forcing_text = (
+            f"Nel caso ideale di accelerazione costante, il riferimento inerziale del pendolo vale circa "
+            f"{np.rad2deg(ref_angle):.2f} deg."
+        )
 
     if relative_drift < 0.5:
         energy_text = f"La deriva energetica e molto contenuta ({relative_drift:.2f}%): l'integrazione numerica e coerente."
@@ -915,10 +959,10 @@ def _simulation_insights(result, params: SimulationParams) -> list[tuple[str, st
     else:
         energy_text = f"La deriva energetica arriva a {relative_drift:.2f}%: puoi ridurre dt per una simulazione piu fedele."
 
-    if eq_angle is not None and params.cart_damping == 0.0 and params.pendulum_damping == 0.0:
+    if ref_angle is not None and params.pendulum_damping == 0.0:
         final_text = (
-            f"Senza smorzamento il pendolo non converge: oscilla attorno a theta_eq = {np.rad2deg(eq_angle):.2f} deg "
-            f"invece di fermarsi su quell'angolo."
+            f"Senza smorzamento del pendolo non c'e convergenza: la traiettoria resta attorno a theta_ref = "
+            f"{np.rad2deg(ref_angle):.2f} deg invece di fermarsi su quell'angolo."
         )
     elif abs(final_theta) < 4.0 and abs(final_omega) < 8.0:
         final_text = "Lo stato finale e vicino all'equilibrio dinamico: il sistema sta rientrando o ci e gia quasi arrivato."
@@ -1065,8 +1109,8 @@ peak_speed = float(np.max(np.abs(result.cart_velocity)))
 energy_drift = float(result.total_energy[-1] - result.total_energy[0])
 reference_energy = max(1e-9, float(np.max(np.abs(result.total_energy))))
 energy_drift_pct = abs(energy_drift) / reference_energy * 100.0
-equilibrium_angle_rad = equilibrium_angle_for_constant_force(params)
-equilibrium_angle_deg = None if equilibrium_angle_rad is None else float(np.rad2deg(equilibrium_angle_rad))
+reference_angle_rad = reference_angle_for_constant_acceleration(params)
+reference_angle_deg = None if reference_angle_rad is None else float(np.rad2deg(reference_angle_rad))
 
 slider_step = max(round(float(result.time[-1]) / 220.0, 3), params.time_step)
 default_view_time = min(
@@ -1118,7 +1162,7 @@ with col_main:
         + _metric_card("Angolo massimo", f"{peak_theta:.2f} deg")
         + _metric_card("Velocita max", f"{peak_speed:.3f} m/s")
         + _metric_card("Forza massima", f"{peak_force:.2f} N")
-        + _metric_card("Theta equilibrio", "--" if equilibrium_angle_deg is None else f"{equilibrium_angle_deg:.2f} deg")
+        + _metric_card("Theta rif. accel.", "--" if reference_angle_deg is None else f"{reference_angle_deg:.2f} deg")
         + _metric_card("Deriva energia", f"{energy_drift_pct:.2f}%")
         + "</div>",
         unsafe_allow_html=True,
@@ -1144,7 +1188,7 @@ with col_main:
                 frame_index,
                 cart_width=cart_width,
                 cart_height=cart_height,
-                equilibrium_angle_rad=equilibrium_angle_rad,
+                reference_angle_rad=reference_angle_rad,
             ),
             width="stretch",
         )
@@ -1152,7 +1196,8 @@ with col_main:
     with tab_signals:
         st.markdown("<div class='plot-card'>", unsafe_allow_html=True)
         st.subheader("Andamenti temporali principali")
-        st.pyplot(_build_overview_figure(result, equilibrium_angle_deg=equilibrium_angle_deg), width="stretch")
+        st.caption("Le coppie x/v e theta/omega usano scale verticali separate, cosi il confronto visivo resta fedele alle unita fisiche.")
+        st.pyplot(_build_overview_figure(result, reference_angle_deg=reference_angle_deg), width="stretch")
         st.markdown("</div>", unsafe_allow_html=True)
 
     with tab_energy:
@@ -1168,7 +1213,7 @@ with col_main:
     with tab_phase:
         st.markdown("<div class='plot-card'>", unsafe_allow_html=True)
         st.subheader("Traiettorie nello spazio delle fasi")
-        st.pyplot(_build_phase_figure(result, equilibrium_angle_deg=equilibrium_angle_deg), width="stretch")
+        st.pyplot(_build_phase_figure(result, reference_angle_deg=reference_angle_deg), width="stretch")
         st.download_button(
             "Scarica risultati in CSV",
             data=csv_data,
