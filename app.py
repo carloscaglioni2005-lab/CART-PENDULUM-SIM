@@ -1107,9 +1107,6 @@ peak_x = float(np.max(np.abs(result.cart_position)))
 peak_theta = float(np.max(np.abs(result.theta_deg)))
 peak_force = float(np.max(np.abs(result.force)))
 peak_speed = float(np.max(np.abs(result.cart_velocity)))
-energy_drift = float(result.total_energy[-1] - result.total_energy[0])
-reference_energy = max(1e-9, float(np.max(np.abs(result.total_energy))))
-energy_drift_pct = abs(energy_drift) / reference_energy * 100.0
 reference_angle_rad = reference_angle_for_constant_acceleration(params)
 reference_angle_deg = None if reference_angle_rad is None else float(np.rad2deg(reference_angle_rad))
 
@@ -1121,8 +1118,6 @@ default_view_time = min(
 
 cart_width = DISPLAY_CART_WIDTH
 cart_height = DISPLAY_CART_HEIGHT
-insights = _simulation_insights(result, params)
-csv_data = _simulation_csv(result)
 
 with col_main:
     st.markdown(
@@ -1163,15 +1158,11 @@ with col_main:
         + _metric_card("Angolo massimo", f"{peak_theta:.2f} deg")
         + _metric_card("Velocita max", f"{peak_speed:.3f} m/s")
         + _metric_card("Forza massima", f"{peak_force:.2f} N")
-        + _metric_card("Theta rif. accel.", "--" if reference_angle_deg is None else f"{reference_angle_deg:.2f} deg")
-        + _metric_card("Deriva energia", f"{energy_drift_pct:.2f}%")
         + "</div>",
         unsafe_allow_html=True,
     )
 
-    tab_scene, tab_signals, tab_energy, tab_phase = st.tabs(
-        ["Vista istantanea", "Andamenti", "Energia", "Traiettorie ed export"]
-    )
+    tab_scene, tab_signals = st.tabs(["Vista istantanea", "Andamenti"])
 
     with tab_scene:
         view_time = st.slider(
@@ -1199,28 +1190,4 @@ with col_main:
         st.subheader("Andamenti temporali principali")
         st.caption("Le coppie x/v e theta/omega usano scale verticali separate, cosi il confronto visivo resta fedele alle unita fisiche.")
         st.pyplot(_build_overview_figure(result, reference_angle_deg=reference_angle_deg), width="stretch")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with tab_energy:
-        st.markdown("<div class='plot-card'>", unsafe_allow_html=True)
-        st.subheader("Energia e lettura della simulazione")
-        st.pyplot(_build_energy_figure(result), width="stretch")
-        st.markdown(
-            "<div class='insight-grid'>" + "".join(_insight_card(title, body) for title, body in insights) + "</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with tab_phase:
-        st.markdown("<div class='plot-card'>", unsafe_allow_html=True)
-        st.subheader("Traiettorie nello spazio delle fasi")
-        st.pyplot(_build_phase_figure(result, reference_angle_deg=reference_angle_deg), width="stretch")
-        st.download_button(
-            "Scarica risultati in CSV",
-            data=csv_data,
-            file_name="simulazione_carrello_pendolo.csv",
-            mime="text/csv",
-            use_container_width=False,
-        )
-        st.caption(f"Delta energia finale: {energy_drift:.4f} J. I punti blu e arancione indicano stato iniziale e finale.")
         st.markdown("</div>", unsafe_allow_html=True)
