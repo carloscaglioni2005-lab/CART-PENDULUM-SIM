@@ -1051,7 +1051,8 @@ with col_controls:
     st.number_input(
         "Attrito viscoso pendolo [N m s/rad]",
         min_value=0.0,
-        step=0.01,
+        step=0.000001,
+        format="%.6f",
         key="pendulum_damping",
     )
     st.number_input("Massa pendolo [kg]", min_value=0.05, step=0.05, key="pendulum_mass")
