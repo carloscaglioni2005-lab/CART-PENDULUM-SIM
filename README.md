@@ -1,4 +1,5 @@
 # Simulatore Carrello-Pendolo
+Progetto sviluppato nell’ambito del corso di **Fondamenti di Automatica**
 
 Applicazione Streamlit che simula un carrello che si muove su una guida orizzontale sotto l'effetto di una forza scelta dall'utente. Sotto il centro del carrello e collegato un pendolo tramite un'asta rigida.
 
@@ -19,29 +20,6 @@ streamlit run app.py
 ```
 
 L'app locale e disponibile di default su `http://localhost:8501`.
-
-## Pubblicazione su Internet
-
-Il modo piu semplice per rendere pubblica questa app e usare Streamlit Community Cloud.
-
-Struttura gia pronta per il deploy:
-- entrypoint: `app.py`
-- dipendenze: `requirements.txt`
-- configurazione Streamlit: `.streamlit/config.toml`
-
-Passi:
-1. carica questa cartella in un repository GitHub pubblico o privato
-2. vai su `https://share.streamlit.io/`
-3. collega il tuo account GitHub
-4. clicca `Create app`
-5. seleziona repository, branch e file `app.py`
-6. opzionale: scegli un sottodominio personalizzato
-7. clicca `Deploy`
-
-Note utili:
-- Streamlit Community Cloud genera un URL pubblico su dominio `streamlit.app`
-- i file sensibili come `.env` non devono essere caricati nel repository
-- se in futuro aggiungi chiavi segrete, inseriscile nelle impostazioni `Secrets` del deploy e non nel repo
 
 ## Forza applicata
 
@@ -66,3 +44,5 @@ Equazioni del moto usate:
 (M + m) x_ddot + m l cos(theta) theta_ddot = F - C_m x_dot + m l sin(theta) theta_dot^2
 m l cos(theta) x_ddot + m l^2 theta_ddot = tau - m g l sin(theta) - C_p theta_dot
 ```
+
+
