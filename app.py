@@ -1,5 +1,9 @@
+import base64
+import html
 import io
 import json
+import mimetypes
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -123,6 +127,9 @@ SCENARIO_PRESETS = {
     },
 }
 DEFAULT_PRESET_NAME = "Forzamento armonico"
+DEFAULT_BACKGROUND_AUDIO_PATH = Path(
+    "/Users/carloscaglioni/Downloads/Daniil Trifonov – Bach Cantata BWV 147 Jesu, Joy of Man’s Desiring (Transcr. Hess for Piano).mp3"
+)
 
 DISPLAY_CART_WIDTH = 0.72
 DISPLAY_CART_HEIGHT = 0.34
@@ -245,6 +252,36 @@ st.markdown(
         line-height: 1.45;
         margin-top: 0.35rem;
         margin-bottom: 0.8rem;
+    }
+    .background-audio-panel {
+        position: fixed;
+        right: 1.25rem;
+        bottom: 1.25rem;
+        z-index: 9999;
+        width: min(360px, calc(100vw - 2.5rem));
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(148, 163, 184, 0.42);
+        border-radius: 18px;
+        box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
+        backdrop-filter: blur(12px);
+        padding: 0.85rem 0.9rem 0.7rem 0.9rem;
+    }
+    .background-audio-title {
+        color: #0f172a;
+        font-size: 0.82rem;
+        font-weight: 800;
+        margin-bottom: 0.45rem;
+    }
+    .background-audio-panel audio {
+        width: 100%;
+        display: block;
+    }
+    @media (max-width: 640px) {
+        .background-audio-panel {
+            right: 0.75rem;
+            bottom: 0.75rem;
+            width: calc(100vw - 1.5rem);
+        }
     }
     </style>
     """,
@@ -1015,6 +1052,58 @@ def _simulation_csv(result) -> str:
     return buffer.getvalue()
 
 
+@st.cache_data(show_spinner=False)
+def _load_audio_file(path: str) -> tuple[bytes, str, str] | None:
+    audio_path = Path(path)
+    if not audio_path.exists():
+        return None
+
+    mime_type = mimetypes.guess_type(audio_path.name)[0] or "audio/mpeg"
+    return audio_path.read_bytes(), mime_type, audio_path.name
+
+
+def _background_audio_payload(uploaded_audio) -> tuple[bytes, str, str] | None:
+    if uploaded_audio is not None:
+        audio_bytes = uploaded_audio.getvalue()
+        if not audio_bytes:
+            return None
+
+        mime_type = uploaded_audio.type or mimetypes.guess_type(uploaded_audio.name)[0] or "audio/mpeg"
+        return audio_bytes, mime_type, uploaded_audio.name
+
+    return _load_audio_file(str(DEFAULT_BACKGROUND_AUDIO_PATH))
+
+
+def _render_background_audio(uploaded_audio, volume: float) -> None:
+    payload = _background_audio_payload(uploaded_audio)
+    if payload is None:
+        return
+
+    audio_bytes, mime_type, audio_name = payload
+    encoded_audio = base64.b64encode(audio_bytes).decode("ascii")
+    volume_value = min(max(float(volume), 0.0), 1.0)
+    safe_audio_name = html.escape(audio_name)
+    player_id = "background-audio-player"
+    st.markdown(
+        f"""
+        <div class="background-audio-panel">
+            <div class="background-audio-title">Musica di sottofondo: {safe_audio_name}</div>
+            <audio id="{player_id}" controls loop preload="auto">
+                <source src="data:{mime_type};base64,{encoded_audio}" type="{mime_type}">
+            </audio>
+        </div>
+        <script>
+        (() => {{
+            const audio = document.getElementById("{player_id}");
+            if (!audio) return;
+            audio.volume = {volume_value:.3f};
+        }})();
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 _ensure_default_state()
 
 col_main, col_controls = st.columns([1.9, 1], gap="large")
@@ -1061,6 +1150,26 @@ with col_controls:
     st.text_input("Coppia esterna tau(t) [N m]", key="torque_expression")
     st.caption("Sono disponibili `t`, `sin`, `cos`, `tan`, `exp`, `sqrt`, `pi`, `Heaviside`, `Abs`.")
     st.caption("Con forzanti intense il pendolo puo entrare in un regime non lineare molto ampio.")
+
+    with st.expander("Musica di sottofondo", expanded=False):
+        if DEFAULT_BACKGROUND_AUDIO_PATH.exists():
+            st.caption(f"Brano predefinito: {DEFAULT_BACKGROUND_AUDIO_PATH.name}")
+        else:
+            st.warning("Brano predefinito non trovato: puoi caricare un file audio qui sotto.")
+        background_audio = st.file_uploader(
+            "Carica un file audio alternativo",
+            type=["mp3", "wav", "ogg", "m4a"],
+            key="background_audio",
+        )
+        background_audio_volume = st.slider(
+            "Volume",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.35,
+            step=0.05,
+            key="background_audio_volume",
+        )
+        st.caption("Il player resta fisso in basso. Per sicurezza, il browser richiede il primo click su play.")
 
     with st.expander("Impostazioni avanzate"):
         st.number_input("Gravita [m/s^2]", min_value=0.1, step=0.1, key="gravity")
@@ -1120,6 +1229,11 @@ cart_width = DISPLAY_CART_WIDTH
 cart_height = DISPLAY_CART_HEIGHT
 
 with col_main:
+    _render_background_audio(
+        st.session_state.get("background_audio"),
+        float(st.session_state.get("background_audio_volume", 0.35)),
+    )
+
     st.markdown(
         """
         <div class="hero-card">
