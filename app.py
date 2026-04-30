@@ -246,13 +246,6 @@ st.markdown(
         font-size: 0.92rem;
         margin-bottom: 0.8rem;
     }
-    .preset-note {
-        color: #334155;
-        font-size: 0.92rem;
-        line-height: 1.45;
-        margin-top: 0.35rem;
-        margin-bottom: 0.8rem;
-    }
     .background-audio-panel {
         position: fixed;
         right: 1.25rem;
@@ -300,7 +293,6 @@ def _ensure_default_state() -> None:
     if st.session_state.get("_preset_initialized"):
         return
 
-    st.session_state["selected_preset"] = DEFAULT_PRESET_NAME
     _apply_preset(DEFAULT_PRESET_NAME)
     st.session_state["_preset_initialized"] = True
 
@@ -1114,26 +1106,13 @@ with col_controls:
         <div class="control-card">
             <div class="panel-title">Parametri del sistema</div>
             <div class="panel-copy">
-                Scegli uno scenario gia pronto oppure modifica a mano masse, attriti e forzanti.
+                Modifica masse, attriti e forzanti.
                 La simulazione viene ricalcolata a ogni variazione.
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
-    st.selectbox(
-        "Scenario guidato",
-        options=list(SCENARIO_PRESETS.keys()),
-        key="selected_preset",
-    )
-    st.markdown(
-        f"<div class='preset-note'>{SCENARIO_PRESETS[st.session_state['selected_preset']]['description']}</div>",
-        unsafe_allow_html=True,
-    )
-    if st.button("Carica preset nello spazio di lavoro", use_container_width=True):
-        _apply_preset(st.session_state["selected_preset"])
-        st.rerun()
 
     st.number_input("Massa carrello [kg]", min_value=0.1, step=0.1, key="cart_mass")
     st.number_input("Attrito viscoso carrello [N s/m]", min_value=0.0, step=0.01, key="cart_damping")
