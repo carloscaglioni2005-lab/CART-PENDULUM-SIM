@@ -127,9 +127,9 @@ SCENARIO_PRESETS = {
     },
 }
 DEFAULT_PRESET_NAME = "Forzamento armonico"
-DEFAULT_BACKGROUND_AUDIO_PATH = Path(
-    "/Users/carloscaglioni/Downloads/Daniil Trifonov – Bach Cantata BWV 147 Jesu, Joy of Man’s Desiring (Transcr. Hess for Piano).mp3"
-)
+APP_DIR = Path(__file__).resolve().parent
+DEFAULT_BACKGROUND_AUDIO_PATH = APP_DIR / "assets" / "background.mp3"
+DEFAULT_BACKGROUND_AUDIO_TITLE = "Bach Cantata BWV 147 - Jesu, Joy of Man's Desiring"
 
 DISPLAY_CART_WIDTH = 0.72
 DISPLAY_CART_HEIGHT = 0.34
@@ -1051,7 +1051,8 @@ def _load_audio_file(path: str) -> tuple[bytes, str, str] | None:
         return None
 
     mime_type = mimetypes.guess_type(audio_path.name)[0] or "audio/mpeg"
-    return audio_path.read_bytes(), mime_type, audio_path.name
+    audio_name = DEFAULT_BACKGROUND_AUDIO_TITLE if audio_path == DEFAULT_BACKGROUND_AUDIO_PATH else audio_path.name
+    return audio_path.read_bytes(), mime_type, audio_name
 
 
 def _background_audio_payload(uploaded_audio) -> tuple[bytes, str, str] | None:
@@ -1080,7 +1081,7 @@ def _render_background_audio(uploaded_audio, volume: float) -> None:
         f"""
         <div class="background-audio-panel">
             <div class="background-audio-title">Musica di sottofondo: {safe_audio_name}</div>
-            <audio id="{player_id}" controls loop preload="auto">
+            <audio id="{player_id}" controls loop autoplay preload="auto">
                 <source src="data:{mime_type};base64,{encoded_audio}" type="{mime_type}">
             </audio>
         </div>
@@ -1089,6 +1090,7 @@ def _render_background_audio(uploaded_audio, volume: float) -> None:
             const audio = document.getElementById("{player_id}");
             if (!audio) return;
             audio.volume = {volume_value:.3f};
+            audio.play().catch(() => {{}});
         }})();
         </script>
         """,
@@ -1132,14 +1134,9 @@ with col_controls:
 
     with st.expander("Musica di sottofondo", expanded=False):
         if DEFAULT_BACKGROUND_AUDIO_PATH.exists():
-            st.caption(f"Brano predefinito: {DEFAULT_BACKGROUND_AUDIO_PATH.name}")
+            st.caption(f"Brano incluso: {DEFAULT_BACKGROUND_AUDIO_TITLE}")
         else:
-            st.warning("Brano predefinito non trovato: puoi caricare un file audio qui sotto.")
-        background_audio = st.file_uploader(
-            "Carica un file audio alternativo",
-            type=["mp3", "wav", "ogg", "m4a"],
-            key="background_audio",
-        )
+            st.caption("Brano incluso non disponibile in questa installazione.")
         background_audio_volume = st.slider(
             "Volume",
             min_value=0.0,
@@ -1209,7 +1206,7 @@ cart_height = DISPLAY_CART_HEIGHT
 
 with col_main:
     _render_background_audio(
-        st.session_state.get("background_audio"),
+        None,
         float(st.session_state.get("background_audio_volume", 0.35)),
     )
 
